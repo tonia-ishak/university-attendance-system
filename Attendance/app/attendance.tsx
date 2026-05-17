@@ -2,212 +2,526 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+
 import {
-    ActivityIndicator,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from "react-native";
 
-import { addDoc, collection, getDocs, orderBy, query, where } from "firebase/firestore";
+import {
+    addDoc,
+    collection,
+    onSnapshot
+} from "firebase/firestore";
+
 import { db } from "../firebaseConfig";
 
 export default function Attendance() {
 
-    const { course, section } = useLocalSearchParams();
+    const { course, section } =
+        useLocalSearchParams();
+
     const router = useRouter();
 
-    const [students, setStudents] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [students, setStudents] =
+        useState<any[]>([]);
 
-    // ✅ FETCH FROM FIREBASE
+
+    // 🔥 REALTIME LISTENER
     useEffect(() => {
-    const fetchStudents = async () => {
-        try {
-            // 🔹 1. Always get students FIRST
-            const querySnapshot = await getDocs(collection(db, "attendance"));
 
-            let list: any[] = [];
+        const unsubscribe =
+            onSnapshot(
 
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
+                collection(db, "attendance"),
 
-                list.push({
-                    id: doc.id,
-                    name: data.name,
-                    present: true, // default present
-                });
-            });
+                (snapshot) => {
 
-            // 🔹 2. TRY to get last attendance (safe)
-            try {
-                const q = query(
-                    collection(db, "final_attendance"),
-                    where("course", "==",course),
-                    where("section", "==",section),
-                    orderBy("date", "desc")
-                );
+                    const list =
+                        snapshot.docs.map((doc) => {
 
-                const resultSnap = await getDocs(q);
+                            const data =
+                                doc.data();
 
-                if (!resultSnap.empty) {
-                    const lastDoc = resultSnap.docs[0];
-                    const data = lastDoc.data();
+                            return {
 
-                    const presentList = data.present || [];
+                                id:
+                                    data.id ||
+                                    doc.id,
 
-                    list = list.map(student => ({
-                        ...student,
-                        present: presentList.length>0 ?presentList.some((p: any) => p.name === student.name):true
-                    }));
+                                name:
+                                    data.name,
+
+                                present:
+                                    true,
+
+                            };
+
+                        });
+
+                    setStudents(list);
+
+                },
+
+                (error) => {
+
+                    console.log(
+                        "Realtime error:",
+                        error
+                    );
+
                 }
 
-            } catch (err) {
-                console.log("Attendance fetch failed:", err);
-                // 🔥 DON'T break the app
+            );
+
+        return () =>
+            unsubscribe();
+
+    }, []);
+
+
+    // ✅ TOGGLE PRESENT
+    const toggleAttendance =
+        (index: number) => {
+
+            const updated =
+                [...students];
+
+            updated[index]
+                .present =
+                !updated[index]
+                    .present;
+
+            setStudents(
+                updated
+            );
+
+        };
+
+
+    // ✅ CONFIRM ATTENDANCE
+    const confirmAttendance =
+        async () => {
+
+            try {
+
+                const presentStudents =
+                    students
+
+                        .filter(
+                            s =>
+                                s.present
+                        )
+
+                        .map(
+                            s => ({
+
+                                id:
+                                    s.id,
+
+                                name:
+                                    s.name,
+
+                            })
+                        );
+
+
+                await addDoc(
+
+                    collection(
+                        db,
+                        "final_attendance"
+                    ),
+
+                    {
+
+                        course:
+                            course,
+
+                        section:
+                            section,
+
+                        date:
+                            new Date()
+                                .toLocaleDateString(),
+
+                        present:
+                            presentStudents,
+
+                    }
+
+                );
+
+
+                alert(
+                    "Attendance saved ✅"
+                );
+
+
+                router.back();
+
+
+            } catch (error) {
+
+                console.log(
+                    error
+                );
+
+                alert(
+                    "Error ❌"
+                );
+
             }
 
-            // ✅ ALWAYS set students
-            setStudents(list);
-            setLoading(false);
+        };
 
-        } catch (error) {
-            console.log("Students fetch failed:", error);
-            setLoading(false);
-        }
-    };
-
-    fetchStudents();
-}, []);
-
-    // ✅ TOGGLE
-    const toggleAttendance = (index: number) => {
-        const updated = [...students];
-        updated[index].present = !updated[index].present;
-        setStudents(updated);
-    };
-    const confirmAttendance = async () => {
-        try {
-            const presentStudents = students
-                .filter(s => s.present)
-                .map(s => ({ id: s.id, name: s.name, }));
-            await addDoc(collection(db, "final_attendance"), {
-                course: course,
-                section: section,
-                date: new Date().toLocaleDateString(),
-                present: presentStudents,
-            });
-            alert("Attendance saved successfully✅");
-            router.back();
-        } catch (error) {
-            console.log(error);
-            alert("Error saving attendance❌");
-        }
-    };
-
-    if (loading) {
-        return (
-            <LinearGradient
-                colors={['#FFD27A', '#FFE7A8', '#FFD27A']}
-                style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                <ActivityIndicator
-                    size="large" color="#F97316" />
-                <Text style={{ marginTop: 10 }}>Loading Attendance...</Text>
-            </LinearGradient>
-        );
-    }
 
     return (
+
         <LinearGradient
-            colors={['#FFD27A', '#FFE7A8', '#FFD27A']}
-            style={styles.container}
+
+            colors={[
+                '#FFD27A',
+                '#FFE7A8',
+                '#FFD27A'
+            ]}
+
+            style={
+                styles.container
+            }
+
         >
 
-            <Text style={styles.title}>Attendance List</Text>
 
-            <Text style={styles.subtitle}>
-                {course} - {section}
+            <Text
+                style={
+                    styles.title
+                }
+            >
+
+                Attendance List
+
             </Text>
 
-            <Text style={styles.counter}>
-                Present: {students.filter(s => s.present).length} / {students.length}
+
+
+            <Text
+                style={
+                    styles.subtitle
+                }
+            >
+
+                {course}
+                {" - "}
+                {section}
+
             </Text>
 
-            {/* ✅ LIST OF NAMES */}
-            {students.map((student, index) => (
-                <View key={student.id} style={styles.card}>
-                    <Text style={styles.name}>{student.name}</Text>
 
-                    <TouchableOpacity onPress={() => toggleAttendance(index)}>
-                        <Ionicons
-                            name={student.present ? "checkmark-circle" : "close-circle"}
-                            size={24}
-                            color={student.present ? "#22C55E" : "#EF4444"}
-                        />
-                    </TouchableOpacity>
-                </View>
-            ))}
 
-            {/* Confirm */}
-            <TouchableOpacity style={styles.button}
-                onPress={confirmAttendance}>
-                <Text style={styles.buttonText}>Confirm Attendance</Text>
+            <Text
+                style={
+                    styles.counter
+                }
+            >
 
-            </TouchableOpacity>
+                Present:
+
+                {" "}
+
+                {
+                    students.filter(
+                        s =>
+                            s.present
+                    ).length
+                }
+
+                /
+
+                {
+                    students.length
+                }
+
+            </Text>
+
+
+
+            <ScrollView>
+
+                {
+
+                    students.map(
+
+                        (
+                            student,
+                            index
+                        ) => (
+
+                            <View
+
+                                key={
+                                    index
+                                }
+
+                                style={
+                                    styles.card
+                                }
+
+                            >
+
+                                <View>
+
+                                    <Text
+                                        style={
+                                            styles.name
+                                        }
+                                    >
+
+                                        {
+                                            student.name
+                                        }
+
+                                    </Text>
+
+
+                                    <Text
+                                        style={
+                                            styles.id
+                                        }
+                                    >
+
+                                        {
+                                            student.id
+                                        }
+
+                                    </Text>
+
+
+                                </View>
+
+
+
+                                <TouchableOpacity
+
+                                    onPress={
+                                        () =>
+                                            toggleAttendance(
+                                                index
+                                            )
+                                    }
+
+                                >
+
+                                    <Ionicons
+
+                                        name={
+
+                                            student.present
+
+                                                ?
+
+                                                "checkmark-circle"
+
+                                                :
+
+                                                "close-circle"
+
+                                        }
+
+                                        size={
+                                            28
+                                        }
+
+                                        color={
+
+                                            student.present
+
+                                                ?
+
+                                                "#22C55E"
+
+                                                :
+
+                                                "#EF4444"
+
+                                        }
+
+                                    />
+
+                                </TouchableOpacity>
+
+                            </View>
+
+                        )
+
+                    )
+
+                }
+
+
+
+                <TouchableOpacity
+
+                    style={
+                        styles.button
+                    }
+
+                    onPress={
+                        confirmAttendance
+                    }
+
+                >
+
+                    <Text
+
+                        style={
+                            styles.buttonText
+                        }
+
+                    >
+
+                        Confirm Attendance
+
+                    </Text>
+
+                </TouchableOpacity>
+
+
+            </ScrollView>
 
         </LinearGradient>
+
     );
+
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, padding: 25 },
 
-    title: {
-        fontSize: 26,
-        fontWeight: "600",
-        color: "#122b53",
-        marginBottom: 10,
-        marginTop:30,
-    },
 
-    subtitle: {
-        fontSize: 16,
-        color: "#F97316",
-        marginBottom: 20,
-    },
+const styles =
+    StyleSheet.create({
 
-    counter: {
-        fontSize: 14,
-        marginBottom: 10,
-    },
+        container: {
 
-    card: {
-        backgroundColor: "#F3F4F6",
-        padding: 16,
-        borderRadius: 15,
-        marginBottom: 10,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-    },
+            flex: 1,
 
-    name: {
-        fontSize: 16,
-        color: "#335c9e",
-    },
+            padding: 25,
 
-    button: {
-        marginTop: 20,
-        backgroundColor: "#335c9e",
-        padding: 15,
-        borderRadius: 15,
-        alignItems: "center",
-    },
+        },
 
-    buttonText: {
-        color: "#fff",
-        fontWeight: "600",
-    },
+        title: {
 
+            fontSize: 28,
+
+            fontWeight:
+                "700",
+
+            color:
+                "#122b53",
+
+            marginTop:
+                30,
+
+        },
+
+        subtitle: {
+
+            fontSize:
+                16,
+
+            color:
+                "#F97316",
+
+            marginBottom:
+                20,
+
+        },
+
+        counter: {
+
+            marginBottom:
+                10,
+
+        },
+
+        card: {
+
+            backgroundColor:
+                "#F3F4F6",
+
+            padding:
+                16,
+
+            borderRadius:
+                15,
+
+            marginBottom:
+                10,
+
+            flexDirection:
+                "row",
+
+            justifyContent:
+                "space-between",
+
+            alignItems:
+                "center",
+
+        },
+
+        name: {
+
+            fontSize:
+                16,
+
+            color:
+                "#335c9e",
+
+        },
+
+        id: {
+
+            color:
+                "#777",
+
+            marginTop:
+                4,
+
+        },
+
+        button: {
+
+            marginTop:
+                20,
+
+            backgroundColor:
+                "#335c9e",
+
+            padding:
+                15,
+
+            borderRadius:
+                15,
+
+            alignItems:
+                "center",
+
+            marginBottom:
+                40,
+
+        },
+
+        buttonText: {
+
+            color:
+                "#fff",
+
+            fontWeight:
+                "700",
+
+        },
+
+    });
 });
