@@ -48,7 +48,7 @@ export default function WelcomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Text style={styles.smallTitle}>Welcome to</Text>
-          <Text style={styles.mainTitle}>Univerity Attendance System</Text>
+          <Text style={styles.mainTitle}>University Attendance System</Text>
 
           <View style={styles.heroCard}>
             <View style={styles.heroGlow} />
